@@ -1,0 +1,7 @@
+*.test
+
+cmd/shortener/main
+cmd/shortener/shortener
+
+vendor/
+.vscode
