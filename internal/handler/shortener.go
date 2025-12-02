@@ -9,9 +9,18 @@ import (
 	"strings"
 )
 
-// for now just a global variable
-var Urls map[string]string = make(map[string]string)
-var BaseURL string = "http://localhost:8080/"
+type Handler struct {
+	BaseURL string
+	URLs map[string]string
+}
+
+func New(b string) *Handler {
+	b = strings.TrimSuffix(b, "/")
+	return &Handler{
+		BaseURL: b,
+		URLs: make(map[string]string),
+	}
+}
 
 // generate random url using rand package
 func GenerateRandomUrl() string {
@@ -23,7 +32,7 @@ func GenerateRandomUrl() string {
 }
 
 // handler POST URL
-func HandlePost(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandlePost(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		w.Header().Set("Content-Type", "text/plain")
 		if r.URL.Path != "/" {
@@ -44,43 +53,42 @@ func HandlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		encodedUrl := GenerateRandomUrl()
-		Urls[encodedUrl] = string(url)
+		stringUrl := string(url)
 
-		fullUrl := BaseURL + encodedUrl
+		if !strings.HasPrefix(stringUrl, "http://") && !strings.HasPrefix(stringUrl, "https://") {
+			fmt.Println("incorrect URL in body")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+	}
+
+		encodedUrl := GenerateRandomUrl()
+		h.URLs[encodedUrl] = string(url)
+
+		fullUrl := h.BaseURL + "/" + encodedUrl
 
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte(fullUrl))
-	} else if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
 	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
 // handler GET URL by ID
-func HandleGetById(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		// if r.URL.Path == "/" {
-		// 	fmt.Println("not a / route")
-		// 	w.WriteHeader(http.StatusBadRequest)
-		// 	return
-		// }
-
-		stringId := r.PathValue("id")
+func (h *Handler) HandleGetById(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet { 
+		stringId := strings.TrimPrefix(r.URL.Path,"/")
 		stringId = strings.TrimSpace(stringId)
+
 		fmt.Println(stringId)
 		if stringId == "" {
 			fmt.Println("empty id")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		// url := r.URL.Path
-		// id := strings.TrimPrefix(url, "/")
 
-		originalUrl, exists := Urls[stringId]
-		fmt.Println(Urls)
-		fmt.Println("original url", Urls[stringId])
+		originalUrl, exists := h.URLs[stringId]
+		fmt.Println(h.URLs)
+		fmt.Println("original url", h.URLs[stringId])
 		if !exists {
 			fmt.Println("id doesn't exists in db")
 			w.WriteHeader(http.StatusBadRequest)
@@ -88,9 +96,7 @@ func HandleGetById(w http.ResponseWriter, r *http.Request) {
 		}
 
 		http.Redirect(w, r, originalUrl, http.StatusTemporaryRedirect)
-	} else if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
 	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }

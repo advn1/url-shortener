@@ -10,13 +10,14 @@ import (
 )
 
 func TestPostURL_Success(t *testing.T) {
+	h := New("http://localhost:8080")
 	originalURL := "https://youtube.com"
 
 	body := strings.NewReader(originalURL)
 
-	r := httptest.NewRequest("POST", BaseURL, body)
+	r := httptest.NewRequest("POST", "/", body)
 	w := httptest.NewRecorder()
-	HandlePost(w, r)
+	h.HandlePost(w, r)
 
 	res := w.Result()
 	defer res.Body.Close()
@@ -36,27 +37,29 @@ func TestPostURL_Success(t *testing.T) {
 
 	shortURL := string(data)
 
-	if !strings.HasPrefix(shortURL, BaseURL) {
-		t.Errorf("expected short URL to start with %s, got %s", BaseURL, shortURL)
+	if !strings.HasPrefix(shortURL, h.BaseURL) {
+		t.Errorf("expected short URL to start with %s, got %s", h.BaseURL, shortURL)
 	}
 
 	splitted := strings.Split(shortURL, "/")
 	id := splitted[len(splitted)-1]
 
-	if originalURL != Urls[id] {
+	if originalURL != h.URLs[id] {
 		fmt.Println(shortURL)
-		fmt.Println(originalURL, Urls[id])
+		fmt.Println(originalURL, h.URLs[id])
 		t.Errorf("failed to save shortened url.")
 	}
 }
 
 func TestPostURL_EmptyURL(t *testing.T) {
+	h := New("http://localhost:8080")
+
 	originalURL := ""
 	body := strings.NewReader(originalURL)
 
-	r := httptest.NewRequest("POST", BaseURL, body)
+	r := httptest.NewRequest("POST", "/", body)
 	w := httptest.NewRecorder()
-	HandlePost(w, r)
+	h.HandlePost(w, r)
 
 	res := w.Result()
 	defer res.Body.Close()
@@ -66,22 +69,23 @@ func TestPostURL_EmptyURL(t *testing.T) {
 }
 
 func TestGetURL_Success(t *testing.T) {
-	savedUrls := Urls
+	h := New("http://localhost:8080")
+	
+	savedUrls := h.URLs
 	testURL_DB := map[string]string{
 		"e1ef4c662c790d8e4f72": "https://google.com",
 	}
 
-	Urls = testURL_DB
+	h.URLs = testURL_DB
 	defer func() {
-		Urls = savedUrls
+		h.URLs = savedUrls
 	}()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/{id}", HandleGetById)
 
-	r := httptest.NewRequest("GET", BaseURL+"e1ef4c662c790d8e4f72", nil)
+	r := httptest.NewRequest("GET", "/"+"e1ef4c662c790d8e4f72", nil)
 	w := httptest.NewRecorder()
-	mux.ServeHTTP(w, r)
+	
+	h.HandleGetById(w,r)
 
 	res := w.Result()
 	defer res.Body.Close()
@@ -97,12 +101,14 @@ func TestGetURL_Success(t *testing.T) {
 }
 
 func TestGetURL_NonExistID(t *testing.T) {
+	h := New("http://localhost:8080")
 	nonExistentID := "5f4e167e355b7b52571c"
-
-	r := httptest.NewRequest("GET", BaseURL+nonExistentID, nil)
+	
+	
+	r := httptest.NewRequest("GET", "/"+nonExistentID, nil)
 	w := httptest.NewRecorder()
 
-	HandleGetById(w, r)
+	h.HandleGetById(w,r)
 
 	res := w.Result()
 	defer res.Body.Close()
@@ -113,17 +119,36 @@ func TestGetURL_NonExistID(t *testing.T) {
 }
 
 func TestGetURL_EmptyID(t *testing.T) {
+	h := New("http://localhost:8080")
 	nonExistentID := ""
-
-	r := httptest.NewRequest("GET", BaseURL+nonExistentID, nil)
+		
+	r := httptest.NewRequest("GET", "/"+nonExistentID, nil)
 	w := httptest.NewRecorder()
 
-	HandleGetById(w, r)
+	h.HandleGetById(w,r)
 
 	res := w.Result()
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("incorrect status code. Got %v, wanted %v", res.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestPostURL_InvalidURL(t *testing.T) {
+	h := New("http://localhost:8080")
+	
+	invalidURL := "ftp://example.com" // not http or https protocol
+	body := strings.NewReader(invalidURL)
+
+	r := httptest.NewRequest("POST", "/", body)
+	w := httptest.NewRecorder()
+	h.HandlePost(w, r)
+
+	res := w.Result()
+	defer res.Body.Close()
+	
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("expected %v for invalid URL, got %v", http.StatusBadRequest, res.StatusCode)
 	}
 }
