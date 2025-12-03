@@ -1,33 +1,43 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/advn1/url-shortener/internal/config"
 	"github.com/advn1/url-shortener/internal/handler"
+	"github.com/advn1/url-shortener/internal/middleware"
+	"go.uber.org/zap"
 )
 
 func main() {
+	// init logger
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	// logger wrapper. provides more ergonomic API
+	sugar := logger.Sugar()
+
+	// parse application config and validate it
 	cfg := config.Parse()
-
 	if err := cfg.Validate(); err != nil {
-        fmt.Printf("Config error: %v", err)
-    }
+		sugar.Fatalw("Config error", "error", err)
+	}
 
-	fmt.Printf("Server configuration:\n")
-    fmt.Printf("  Listening on: %s\n", cfg.Host)
-    fmt.Printf("  Base URL: %s\n", cfg.BaseURL)
-    fmt.Println()
-
-	h := handler.New(cfg.BaseURL)
+	// init handler and mux
+	h := handler.New(cfg.BaseURL, sugar)
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/", h.HandlePost)
-	mux.HandleFunc("/{id}", h.HandleGetById)
+	// added logging middleware
+	mux.HandleFunc("/", middleware.LoggingMiddleware(h.HandlePost, sugar))
+	mux.HandleFunc("/{id}", middleware.LoggingMiddleware(h.HandleGetById, sugar))
 
-	err := http.ListenAndServe(cfg.Host, mux)
+	// start listening
+	sugar.Infow("Starting server", "address", cfg.Host, "base URL", cfg.BaseURL)
+	err = http.ListenAndServe(cfg.Host, mux)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
+		sugar.Fatalw("Starting server", "error", err)
 	}
 }

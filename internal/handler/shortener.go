@@ -3,22 +3,25 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 type Handler struct {
 	BaseURL string
-	URLs map[string]string
+	URLs    map[string]string
+	logger  *zap.SugaredLogger
 }
 
-func New(b string) *Handler {
+func New(b string, sugar *zap.SugaredLogger) *Handler {
 	b = strings.TrimSuffix(b, "/")
 	return &Handler{
 		BaseURL: b,
-		URLs: make(map[string]string),
+		URLs:    make(map[string]string),
+		logger:  sugar,
 	}
 }
 
@@ -42,13 +45,11 @@ func (h *Handler) HandlePost(w http.ResponseWriter, r *http.Request) {
 
 		url, err := io.ReadAll(r.Body)
 		if err != nil {
-			fmt.Printf("error: %v\n", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		if len(url) == 0 {
-			fmt.Println("empty body")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -56,10 +57,9 @@ func (h *Handler) HandlePost(w http.ResponseWriter, r *http.Request) {
 		stringUrl := string(url)
 
 		if !strings.HasPrefix(stringUrl, "http://") && !strings.HasPrefix(stringUrl, "https://") {
-			fmt.Println("incorrect URL in body")
 			w.WriteHeader(http.StatusBadRequest)
 			return
-	}
+		}
 
 		encodedUrl := GenerateRandomUrl()
 		h.URLs[encodedUrl] = string(url)
@@ -75,22 +75,17 @@ func (h *Handler) HandlePost(w http.ResponseWriter, r *http.Request) {
 
 // handler GET URL by ID
 func (h *Handler) HandleGetById(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet { 
-		stringId := strings.TrimPrefix(r.URL.Path,"/")
+	if r.Method == http.MethodGet {
+		stringId := strings.TrimPrefix(r.URL.Path, "/")
 		stringId = strings.TrimSpace(stringId)
 
-		fmt.Println(stringId)
 		if stringId == "" {
-			fmt.Println("empty id")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		originalUrl, exists := h.URLs[stringId]
-		fmt.Println(h.URLs)
-		fmt.Println("original url", h.URLs[stringId])
 		if !exists {
-			fmt.Println("id doesn't exists in db")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
