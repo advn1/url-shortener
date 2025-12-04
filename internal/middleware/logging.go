@@ -33,7 +33,7 @@ func (r *StatusRecorder) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 }
 
-func LoggingMiddleware(h http.HandlerFunc, sugar *zap.SugaredLogger) http.HandlerFunc {
+func LoggingMiddleware(h http.Handler, sugar *zap.SugaredLogger) http.Handler {
 	logFn := func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		requestURI := r.RequestURI

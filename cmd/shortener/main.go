@@ -30,13 +30,17 @@ func main() {
 	h := handler.New(cfg.BaseURL, sugar)
 	mux := http.NewServeMux()
 
-	// added logging middleware
-	mux.HandleFunc("/", middleware.LoggingMiddleware(h.HandlePost, sugar))
-	mux.HandleFunc("/{id}", middleware.LoggingMiddleware(h.HandleGetById, sugar))
-	mux.Handle("/api/shorten", middleware.LoggingMiddleware(h.HandlePostRESTApi, sugar))
+	// register endpoints
+	mux.HandleFunc("/", h.HandlePost)
+	mux.HandleFunc("/{id}", h.HandleGetById)
+	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
+	
+	// create a middlewared-handler
+	handler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
+
 	// start listening
 	sugar.Infow("Starting server", "address", cfg.Host, "base URL", cfg.BaseURL)
-	err = http.ListenAndServe(cfg.Host, mux)
+	err = http.ListenAndServe(cfg.Host, handler)
 	if err != nil {
 		sugar.Fatalw("Starting server", "error", err)
 	}

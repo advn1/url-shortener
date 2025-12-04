@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/advn1/url-shortener/internal/jsonutils"
 	"go.uber.org/zap"
 )
 
@@ -34,12 +35,6 @@ func GenerateRandomUrl() string {
 
 	encodedUrl := hex.EncodeToString(randomUrl)
 	return encodedUrl
-}
-
-func writeJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(status)
-    json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
 // handler POST URL
@@ -117,39 +112,39 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	
     if r.Method != http.MethodPost {
-        writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+        jsonutils.WriteJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
         return
     }
     
     if r.Header.Get("Content-Type") != "application/json" {
-        writeJSONError(w, http.StatusBadRequest, "incorrect Content-Type header")
+        jsonutils.WriteJSONError(w, http.StatusBadRequest, "incorrect Content-Type header")
         return
     }
 
     body, err := io.ReadAll(r.Body)
     if err != nil {
-        writeJSONError(w, http.StatusInternalServerError, "failed to read request body")
+        jsonutils.WriteJSONError(w, http.StatusInternalServerError, "failed to read request body")
         return
     }
 
     if len(body) == 0 {
-        writeJSONError(w, http.StatusBadRequest, "empty POST request body")
+        jsonutils.WriteJSONError(w, http.StatusBadRequest, "empty POST request body")
         return
     }
 
     var postURLBody PostURLBody
     if err := json.Unmarshal(body, &postURLBody); err != nil {
-        writeJSONError(w, http.StatusBadRequest, "invalid JSON format")
+        jsonutils.WriteJSONError(w, http.StatusBadRequest, "invalid JSON format")
         return
     }
 
     if postURLBody.Url == "" {
-        writeJSONError(w, http.StatusBadRequest, "empty URL")
+        jsonutils.WriteJSONError(w, http.StatusBadRequest, "empty URL")
         return
     }
 
     if _, err := url.ParseRequestURI(postURLBody.Url); err != nil {
-        writeJSONError(w, http.StatusBadRequest, "invalid URL format")
+        jsonutils.WriteJSONError(w, http.StatusBadRequest, "invalid URL format")
         return
     }
 
@@ -162,7 +157,7 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 
 	jsonResult, err := json.Marshal(&result)
 	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		jsonutils.WriteJSONError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
