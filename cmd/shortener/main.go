@@ -33,7 +33,7 @@ func main() {
 	// added logging middleware
 	mux.HandleFunc("/", middleware.LoggingMiddleware(h.HandlePost, sugar))
 	mux.HandleFunc("/{id}", middleware.LoggingMiddleware(h.HandleGetById, sugar))
-
+	mux.Handle("/api/shorten", middleware.LoggingMiddleware(h.HandlePostRESTApi, sugar))
 	// start listening
 	sugar.Infow("Starting server", "address", cfg.Host, "base URL", cfg.BaseURL)
 	err = http.ListenAndServe(cfg.Host, mux)

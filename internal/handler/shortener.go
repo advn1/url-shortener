@@ -3,8 +3,10 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"go.uber.org/zap"
@@ -34,12 +36,18 @@ func GenerateRandomUrl() string {
 	return encodedUrl
 }
 
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
 // handler POST URL
 func (h *Handler) HandlePost(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		w.Header().Set("Content-Type", "text/plain")
 		if r.URL.Path != "/" {
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
@@ -94,4 +102,70 @@ func (h *Handler) HandleGetById(w http.ResponseWriter, r *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+type PostURLBody struct {
+	Url string `json:"url"`
+}
+
+type PostURLResponse struct {
+	Result string `json:"result"`
+}
+
+
+func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+    if r.Method != http.MethodPost {
+        writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+        return
+    }
+    
+    if r.Header.Get("Content-Type") != "application/json" {
+        writeJSONError(w, http.StatusBadRequest, "incorrect Content-Type header")
+        return
+    }
+
+    body, err := io.ReadAll(r.Body)
+    if err != nil {
+        writeJSONError(w, http.StatusInternalServerError, "failed to read request body")
+        return
+    }
+
+    if len(body) == 0 {
+        writeJSONError(w, http.StatusBadRequest, "empty POST request body")
+        return
+    }
+
+    var postURLBody PostURLBody
+    if err := json.Unmarshal(body, &postURLBody); err != nil {
+        writeJSONError(w, http.StatusBadRequest, "invalid JSON format")
+        return
+    }
+
+    if postURLBody.Url == "" {
+        writeJSONError(w, http.StatusBadRequest, "empty URL")
+        return
+    }
+
+    if _, err := url.ParseRequestURI(postURLBody.Url); err != nil {
+        writeJSONError(w, http.StatusBadRequest, "invalid URL format")
+        return
+    }
+
+	encodedUrl := GenerateRandomUrl()
+	h.URLs[encodedUrl] = postURLBody.Url
+
+	fullUrl := h.BaseURL + "/" + encodedUrl
+
+	result := PostURLResponse {Result: fullUrl}
+
+	jsonResult, err := json.Marshal(&result)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Write(jsonResult)
 }
