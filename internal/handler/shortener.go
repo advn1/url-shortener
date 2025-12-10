@@ -4,26 +4,31 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/advn1/url-shortener/internal/jsonutils"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 type Handler struct {
 	BaseURL string
 	URLs    map[string]string
+	StoragePath string
 	logger  *zap.SugaredLogger
 }
 
-func New(b string, sugar *zap.SugaredLogger) *Handler {
-	b = strings.TrimSuffix(b, "/")
+func New(baseURL string, urls map[string]string, storagePath string, sugar *zap.SugaredLogger) *Handler {
+	baseURL = strings.TrimSuffix(baseURL, "/")
 	return &Handler{
-		BaseURL: b,
-		URLs:    make(map[string]string),
+		BaseURL: baseURL,
+		URLs:    urls,
+		StoragePath: storagePath,
 		logger:  sugar,
 	}
 }
@@ -104,7 +109,9 @@ type PostURLBody struct {
 }
 
 type PostURLResponse struct {
-	Result string `json:"result"`
+	Uuid uuid.UUID `json:"uuid"`
+	ShortUrl string `json:"short_url"`
+	OriginalUrl string `json:"original_url"`
 }
 
 
@@ -151,9 +158,10 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 	encodedUrl := GenerateRandomUrl()
 	h.URLs[encodedUrl] = postURLBody.Url
 
-	fullUrl := h.BaseURL + "/" + encodedUrl
+	// shortenedUrl := h.BaseURL + "/" + encodedUrl
+	shortenedUrl := encodedUrl
 
-	result := PostURLResponse {Result: fullUrl}
+	result := PostURLResponse {Uuid: uuid.New(), ShortUrl: shortenedUrl, OriginalUrl: postURLBody.Url}
 
 	jsonResult, err := json.Marshal(&result)
 	if err != nil {
@@ -161,6 +169,29 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	message, code, err := saveToDatabase(jsonResult, h.StoragePath)
+	if err != nil {
+        jsonutils.WriteJSONError(w, code, fmt.Sprintf("%v: %v", message, err))
+		return
+	}
+
 	w.WriteHeader(http.StatusCreated)
 	w.Write(jsonResult)
+}
+
+func saveToDatabase(jsonResult []byte, storagePath string) (string, int, error) {
+	jsonResult = append(jsonResult, '\n')
+
+	file, err := os.OpenFile(storagePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664) 
+	if err != nil {
+		return "couldn't open storage file " + storagePath, http.StatusInternalServerError, err
+	}
+	defer file.Close()
+
+	_, err = file.Write(jsonResult)
+	if err != nil {
+		return "couldn't write to a storage file", http.StatusInternalServerError, err
+	}
+
+	return "", 0, nil
 }
