@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 )
 
-
 func TestPostURL_Success(t *testing.T) {
 	logger, err := zap.NewDevelopment()
 	if err != nil {
@@ -20,8 +19,8 @@ func TestPostURL_Success(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
+
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 	originalURL := "https://youtube.com"
 
 	body := strings.NewReader(originalURL)
@@ -68,8 +67,8 @@ func TestPostURL_EmptyURL(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
+
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
 	originalURL := ""
 	body := strings.NewReader(originalURL)
@@ -93,8 +92,8 @@ func TestPostURL_InvalidURL(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
+
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
 	invalidURL := "ftp://example.com" // not http or https protocol
 	body := strings.NewReader(invalidURL)
@@ -119,8 +118,8 @@ func TestGetURL_Success(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
+
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
 	savedUrls := h.URLs
 	testURL_DB := map[string]string{
@@ -158,8 +157,8 @@ func TestGetURL_EmptyID(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
+
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 	nonExistentID := ""
 
 	r := httptest.NewRequest("GET", "/"+nonExistentID, nil)
@@ -183,8 +182,8 @@ func TestGetURL_NonExistID(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
+
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 	nonExistentID := "5f4e167e355b7b52571c"
 
 	r := httptest.NewRequest("GET", "/"+nonExistentID, nil)
@@ -208,10 +207,10 @@ func TestPostRESTApi_Success(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
 
-	postURLBody := PostURLBody {Url: "https://youtube.com"}
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
+
+	postURLBody := PostURLBody{Url: "https://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -242,16 +241,15 @@ func TestPostRESTApi_Success(t *testing.T) {
 	}
 
 	var responseBody PostURLResponse
-	
+
 	err = json.Unmarshal(body, &responseBody)
 	if err != nil {
 		t.Errorf("error on unmarshalling response body: %v", err)
 	}
 
-
 	if len(responseBody.ShortUrl) == 0 {
-		t.Errorf("incorrect response. Got %v, wanted http://localhost:8080/<something>", responseBody.ShortUrl)	
-	} 
+		t.Errorf("incorrect response. Got %v, wanted http://localhost:8080/<something>", responseBody.ShortUrl)
+	}
 }
 
 func TestPostRESTApi_WrongContentType(t *testing.T) {
@@ -262,10 +260,10 @@ func TestPostRESTApi_WrongContentType(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
 
-	postURLBody := PostURLBody {Url: "https://youtube.com"}
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
+
+	postURLBody := PostURLBody{Url: "https://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -295,10 +293,10 @@ func TestPostRESTApi_WrongMethod(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
 
-	postURLBody := PostURLBody {Url: "https://youtube.com"}
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
+
+	postURLBody := PostURLBody{Url: "https://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -328,10 +326,10 @@ func TestPostRESTApi_EmptyURL(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
 
-	postURLBody := PostURLBody {Url: ""}
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
+
+	postURLBody := PostURLBody{Url: ""}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -361,10 +359,10 @@ func TestPostRESTApi_InvalidURL(t *testing.T) {
 	defer logger.Sync()
 
 	sugar := logger.Sugar()
-	
-	h := New("http://localhost:8080", make(map[string]string), "./test", sugar)
 
-	postURLBody := PostURLBody {Url: "://youtube.com"}
+	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
+
+	postURLBody := PostURLBody{Url: "://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {

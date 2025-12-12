@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"github.com/advn1/url-shortener/internal/config"
 	"github.com/advn1/url-shortener/internal/handler"
 	"github.com/advn1/url-shortener/internal/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
 
@@ -26,30 +29,41 @@ func main() {
 	// parse application config and validate it
 	cfg := config.Parse()
 	if err := cfg.Validate(); err != nil {
-		sugar.Fatalw("Config error", "error", err)
+		sugar.Fatalw("Config validation error", "error", err)
 	}
-	
-	// parse urls from saved file
-	urlsMap, err := loadFromFile(cfg.FileStoragePath)
-	if err != nil {
-		sugar.Fatalw("Loading file error", "error", err)
+
+	// choose where to store data
+	var urlsMap map[string]string = map[string]string{}
+	var db *sql.DB
+
+	if cfg.DatabaseDSN != "" {
+		sugar.Infow("Storage mode: Database")
+		db = initDB(cfg.DatabaseDSN, sugar)
+		defer db.Close()
+	} else if cfg.FileStoragePath != "" {
+		sugar.Infow("Storage mode: File")
+		urlsMap = initUrlsMap(cfg.FileStoragePath, sugar)
+	} else {
+		sugar.Infow("Storage mode: In-memory")
+		// nothing happens. urlsMap is already initialized
 	}
 
 	// init handler and mux
-	h := handler.New(cfg.BaseURL, urlsMap, cfg.FileStoragePath, sugar)
+	h := handler.New(cfg.BaseURL, urlsMap, cfg.FileStoragePath, db, sugar)
 	mux := http.NewServeMux()
 
 	// register endpoints
 	mux.HandleFunc("/", h.HandlePost)
 	mux.HandleFunc("/{id}", h.HandleGetById)
 	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
+	mux.HandleFunc("/ping", h.PingBD)
 	
 	// create a middlewared-handler
 	handler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
 
 	// start listening
-	sugar.Infow("Starting server", "address", cfg.Host, "base URL", cfg.BaseURL)
-	err = http.ListenAndServe(cfg.Host, handler)
+	sugar.Infow("Starting server", "address", cfg.ServerAddr, "base URL", cfg.BaseURL)
+	err = http.ListenAndServe(cfg.ServerAddr, handler)
 	if err != nil {
 		sugar.Fatalw("Starting server", "error", err)
 	}
@@ -58,7 +72,7 @@ func main() {
 func loadFromFile(filename string) (map[string]string, error) {
 	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0664)
 	if err != nil {
-		return nil, err
+		return map[string]string{}, err
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -70,11 +84,43 @@ func loadFromFile(filename string) (map[string]string, error) {
 		
 		err := json.Unmarshal(line, &jsonLine)
 		if err != nil {
-			return nil, err
+			return map[string]string{}, err
 		}
 		
 		urlsMap[jsonLine.ShortUrl] = jsonLine.OriginalUrl
 	}
 
 	return urlsMap, nil
+}
+
+func initUrlsMap(fileStoragePath string, sugar *zap.SugaredLogger) map[string]string {
+	urlsMap, err := loadFromFile(fileStoragePath)
+	if err != nil {
+		sugar.Fatalw("Loading file error", "error", err)
+	}	
+	return urlsMap
+}
+
+func initDB(dsn string, sugar *zap.SugaredLogger) *sql.DB {
+	// init db
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		sugar.Fatalw("cannot open db connection", "error", err)	
+	}
+
+	// check connection
+	if err = db.Ping(); err != nil {
+        sugar.Fatalw("cannot ping db", "error", err)
+	}
+
+	// create table
+	_, err = db.ExecContext(context.Background(), `CREATE TABLE IF NOT EXISTS urls (
+	id CHAR(36) PRIMARY KEY,
+	original_url VARCHAR(100) NOT NULL,
+	short_url VARCHAR(100) NOT NULL UNIQUE
+	)`)
+	if err != nil {
+		sugar.Fatalw("cannot init db table", "error", err)
+	}	
+	return db
 }
