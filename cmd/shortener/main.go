@@ -1,46 +1,126 @@
 package main
 
 import (
-	"flag"
-	"fmt"
+	"bufio"
+	"context"
+	"database/sql"
+	"encoding/json"
 	"net/http"
-	"strings"
+	"os"
 
 	"github.com/advn1/url-shortener/internal/config"
 	"github.com/advn1/url-shortener/internal/handler"
+	"github.com/advn1/url-shortener/internal/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.uber.org/zap"
 )
 
 func main() {
-	mux := http.NewServeMux()
-	cfg := config.Config {}
-
-	var host string
-	flag.StringVar(&host, "a", "localhost:8080", "address of HTTP-server (shorthand)")
-	flag.StringVar(&host, "address", "localhost:8080", "address of HTTP-server")
-
-	var baseURL string
-	flag.StringVar(&baseURL, "b", "http://localhost:8080", "base address of shortened URL (shorthand)")
-	flag.StringVar(&baseURL, "base-url", "http://localhost:8080", "base address of shortened URL")
-	
-	flag.Parse()
-
-	if !strings.HasPrefix(baseURL, "https://") && !strings.HasPrefix(baseURL, "http://") {
-		fmt.Println("base address of shortened URL must start with http:// or https://")
-		return
+	// init logger
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		panic(err)
 	}
-	baseURL = strings.TrimSuffix(baseURL, "/")
+	defer logger.Sync()
 
-	cfg.Host = host
-	cfg.BaseURL = baseURL
+	// logger wrapper. provides more ergonomic API
+	sugar := logger.Sugar()
 
-	h := handler.New(cfg.BaseURL)
+	// parse application config and validate it
+	cfg := config.Parse()
+	if err := cfg.Validate(); err != nil {
+		sugar.Fatalw("Config validation error", "error", err)
+	}
 
+	// choose where to store data
+	var urlsMap map[string]string = map[string]string{}
+	var db *sql.DB
+
+	if cfg.DatabaseDSN != "" {
+		sugar.Infow("Storage mode: Database")
+		db = initDB(cfg.DatabaseDSN, sugar)
+		defer db.Close()
+	} else if cfg.FileStoragePath != "" {
+		sugar.Infow("Storage mode: File")
+		urlsMap = initUrlsMap(cfg.FileStoragePath, sugar)
+	} else {
+		sugar.Infow("Storage mode: In-memory")
+		// nothing happens. urlsMap is already initialized
+	}
+
+	// init handler and mux
+	h := handler.New(cfg.BaseURL, urlsMap, cfg.FileStoragePath, db, sugar)
+	mux := http.NewServeMux()
+
+	// register endpoints
 	mux.HandleFunc("/", h.HandlePost)
 	mux.HandleFunc("/{id}", h.HandleGetById)
+	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
+	mux.HandleFunc("/ping", h.PingBD)
+	
+	// create a middlewared-handler
+	handler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
 
-	fmt.Println("listening to", cfg.Host)
-	err := http.ListenAndServe(cfg.Host, mux)
+	// start listening
+	sugar.Infow("Starting server", "address", cfg.ServerAddr, "base URL", cfg.BaseURL)
+	err = http.ListenAndServe(cfg.ServerAddr, handler)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
+		sugar.Fatalw("Starting server", "error", err)
 	}
+}
+
+func loadFromFile(filename string) (map[string]string, error) {
+	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0664)
+	if err != nil {
+		return map[string]string{}, err
+	}
+
+	scanner := bufio.NewScanner(file)
+	urlsMap := make(map[string]string, 10)
+	
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		var jsonLine handler.PostURLResponse 
+		
+		err := json.Unmarshal(line, &jsonLine)
+		if err != nil {
+			return map[string]string{}, err
+		}
+		
+		urlsMap[jsonLine.ShortUrl] = jsonLine.OriginalUrl
+	}
+
+	return urlsMap, nil
+}
+
+func initUrlsMap(fileStoragePath string, sugar *zap.SugaredLogger) map[string]string {
+	urlsMap, err := loadFromFile(fileStoragePath)
+	if err != nil {
+		sugar.Fatalw("Loading file error", "error", err)
+	}	
+	return urlsMap
+}
+
+func initDB(dsn string, sugar *zap.SugaredLogger) *sql.DB {
+	// init db
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		sugar.Fatalw("cannot open db connection", "error", err)	
+	}
+
+	// check connection
+	if err = db.Ping(); err != nil {
+        sugar.Fatalw("cannot ping db", "error", err)
+	}
+
+	// create table
+	_, err = db.ExecContext(context.Background(), `CREATE TABLE IF NOT EXISTS urls (
+	id CHAR(36) PRIMARY KEY,
+	original_url VARCHAR(100) NOT NULL,
+	short_url VARCHAR(100) NOT NULL UNIQUE
+	)`)
+	if err != nil {
+		sugar.Fatalw("cannot init db table", "error", err)
+	}	
+	return db
 }
