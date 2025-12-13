@@ -20,7 +20,7 @@ import (
 
 type Handler struct {
 	BaseURL      string
-	URLs         map[string]string
+	URLs         map[string]string // add mutex in future to provide thread safe writing/reading map
 	StoragePath  string
 	dbConnection *sql.DB
 	logger       *zap.SugaredLogger
@@ -46,6 +46,7 @@ func GenerateRandomUrl() string {
 	return encodedUrl
 }
 
+// deprecated
 // handler POST URL
 func (h *Handler) HandlePost(w http.ResponseWriter, r *http.Request) {
 	h.logger.Infow("HandlePost called", "path", r.URL.Path)
@@ -121,8 +122,9 @@ func (h *Handler) HandleGetById(w http.ResponseWriter, r *http.Request) {
 			if !exists {
 				w.WriteHeader(http.StatusBadRequest)
 				return
-			}	
-			originalUrl = url		
+			}
+
+			originalUrl = url
 		}
 
 		http.Redirect(w, r, originalUrl, http.StatusTemporaryRedirect)
@@ -184,7 +186,6 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 	}
 
 	encodedUrl := GenerateRandomUrl()
-	h.URLs[encodedUrl] = postURLBody.Url
 
 	result := PostURLResponse{Uuid: uuid.New(), ShortUrl: encodedUrl, OriginalUrl: postURLBody.Url}
 
@@ -201,14 +202,16 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 			h.logger.Errorw("DB Exec query", "error", err, "values", result)
 			jsonutils.WriteJSONError(w, http.StatusInternalServerError, "Internal Server Error", "cannot save to database")
 			return
-		}	
+		}
 	} else if h.StoragePath != "" {
-		// save to file
-		message, code, err := saveToFile(jsonResult, h.StoragePath)
+		message, code, err := saveToFile(h.StoragePath, []PostURLResponse{result})
 		if err != nil {
 			jsonutils.WriteJSONError(w, code, "Internal Server Error", message)
 			return
-		}	
+		}
+
+		h.URLs[result.ShortUrl] = result.OriginalUrl
+
 	} else {
 		h.URLs[encodedUrl] = postURLBody.Url
 	}
@@ -217,18 +220,147 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResult)
 }
 
-func saveToFile(jsonResult []byte, storagePath string) (string, int, error) {
-	jsonResult = append(jsonResult, '\n')
+type BatchRequest struct {
+	CorrelationID string `json:"correlation_id"`
+	OriginalURL   string `json:"original_url"`
+}
 
+type BatchResponse struct {
+	CorrelationID string `json:"correlation_id"`
+	ShortURL      string `json:"short_url"`
+}
+
+func (h *Handler) HandlePostBatchRESTApi(w http.ResponseWriter, r *http.Request) {
+	h.logger.Infow("HandlePostBatchRESTApi called", "path", r.URL.Path)
+
+	w.Header().Set("Content-type", "application/json")
+	if r.Method != http.MethodPost {
+		h.logger.Errorw("error", "message", "method not allowed")
+		jsonutils.WriteJSONError(w, http.StatusMethodNotAllowed, "Method not allowed", "method not allowed")
+		return
+	}
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		jsonutils.WriteJSONError(w, http.StatusBadRequest, "Incorrect Content-Type header", "incorrect Content-Type header")
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		jsonutils.WriteJSONError(w, http.StatusInternalServerError, "Failed to read request body", "failed to read request body")
+		return
+	}
+
+	if len(body) == 0 {
+		jsonutils.WriteJSONError(w, http.StatusBadRequest, "Empty POST request body", "empty POST request body")
+		return
+	}
+
+	var BatchBody []BatchRequest
+	if err := json.Unmarshal(body, &BatchBody); err != nil {
+		jsonutils.WriteJSONError(w, http.StatusBadRequest, "Invalid JSON format", "invalid JSON format")
+		return
+	}
+
+	var batchResponse []BatchResponse
+	var itemsToSave []PostURLResponse
+
+	for _, batchBody := range BatchBody {
+		shortUrl := GenerateRandomUrl()
+		batchResponse = append(batchResponse, BatchResponse{CorrelationID: batchBody.CorrelationID, ShortURL: shortUrl})
+		itemsToSave = append(itemsToSave, PostURLResponse{Uuid: uuid.New(), OriginalUrl: batchBody.OriginalURL, ShortUrl: shortUrl})
+	}
+
+	if h.dbConnection != nil {
+		msg, details, err := saveToDatabase(h.dbConnection, h.logger, itemsToSave)
+		if err != nil {
+			h.logger.Errorw("DB saving", "error", err, "message", msg, "values", itemsToSave)
+			jsonutils.WriteJSONError(w, http.StatusInternalServerError, msg, details)
+			return
+		}
+	} else if h.StoragePath != "" {
+		message, code, err := saveToFile(h.StoragePath, itemsToSave)
+		if err != nil {
+			h.logger.Errorw("Saving to file", "error", err, "values", itemsToSave)
+			jsonutils.WriteJSONError(w, code, "Internal Server Error", message)
+			return
+		}
+		
+		for _, item := range itemsToSave {
+			h.URLs[item.ShortUrl] = item.OriginalUrl
+		}
+	} else {
+		for _, item := range itemsToSave {
+			h.URLs[item.ShortUrl] = item.OriginalUrl
+		}
+	}
+
+	w.WriteHeader(http.StatusCreated)
+
+	jsonBatchResult, err := json.Marshal(&batchResponse)
+	if err != nil {
+		h.logger.Errorw("Encoding json", "error", err, "values", batchResponse)
+		jsonutils.WriteJSONError(w, http.StatusInternalServerError, "Internal Server Error", "")
+		return
+	}
+
+	w.Write(jsonBatchResult)
+}
+
+func saveToDatabase(db *sql.DB, logger *zap.SugaredLogger, itemsToSave []PostURLResponse) (string, string, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		logger.Errorw("DB transaction begin", "error", err, "values", itemsToSave)
+		return "Internal Server Error", "cannot save to database", err
+	}
+
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(context.Background(), "INSERT INTO urls (id, original_url, short_url) VALUES ($1, $2, $3)")
+	if err != nil {
+		return "Internal Server Error", "something database", err
+	}
+
+	defer stmt.Close()
+
+	for _, item := range itemsToSave {
+		// save to database
+		_, err = stmt.ExecContext(context.Background(), item.Uuid, item.OriginalUrl, item.ShortUrl)
+		if err != nil {
+			logger.Errorw("DB transaction Exec query", "error", err, "values", itemsToSave)
+			return "Internal Server Error", "cannot save to database", err
+		}
+
+	}
+
+	tx.Commit()
+
+	return "", "", nil
+}
+
+func saveToFile(storagePath string, items []PostURLResponse) (string, int, error) {
 	file, err := os.OpenFile(storagePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664)
 	if err != nil {
 		return "couldn't open storage file " + storagePath, http.StatusInternalServerError, err
 	}
+
 	defer file.Close()
 
-	_, err = file.Write(jsonResult)
-	if err != nil {
-		return "couldn't write to a storage file", http.StatusInternalServerError, err
+	for _, obj := range items {
+		jsonObj, err := json.Marshal(obj)
+		if err != nil {
+			return "Internal Server Error", http.StatusInternalServerError, err
+		}
+
+		_, err = file.Write(jsonObj)
+		if err != nil {
+			return "couldn't write to a storage file", http.StatusInternalServerError, err
+		}
+
+		_, err = file.Write([]byte{'\n'})
+		if err != nil {
+			return "couldn't write to a storage file", http.StatusInternalServerError, err
+		}
 	}
 
 	return "", 0, nil
@@ -240,5 +372,6 @@ func (h *Handler) PingBD(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
 	w.WriteHeader(http.StatusOK)
 }

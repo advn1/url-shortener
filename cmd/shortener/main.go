@@ -56,6 +56,7 @@ func main() {
 	mux.HandleFunc("/", h.HandlePost)
 	mux.HandleFunc("/{id}", h.HandleGetById)
 	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
+	mux.HandleFunc("/api/shorten/batch", h.HandlePostBatchRESTApi)
 	mux.HandleFunc("/ping", h.PingBD)
 	
 	// create a middlewared-handler
@@ -74,12 +75,17 @@ func loadFromFile(filename string) (map[string]string, error) {
 	if err != nil {
 		return map[string]string{}, err
 	}
-
+	
+	defer file.Close()
+	
 	scanner := bufio.NewScanner(file)
 	urlsMap := make(map[string]string, 10)
 	
 	for scanner.Scan() {
 		line := scanner.Bytes()
+	    if len(line) == 0 {
+        	continue
+    	}	
 		var jsonLine handler.PostURLResponse 
 		
 		err := json.Unmarshal(line, &jsonLine)
