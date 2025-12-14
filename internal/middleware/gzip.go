@@ -24,7 +24,7 @@ func GzipMiddleware(h http.Handler) http.Handler {
 		if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 			gz, err := gzip.NewReader(r.Body)
 			if err != nil {
-				jsonutils.WriteJSONError(w,http.StatusBadRequest, "bad gzip request", "")
+				jsonutils.WriteJSONError(w, jsonutils.NewJSONError(http.StatusBadRequest, "bad gzip request", ""))
 				return
 			}
 			defer gz.Close()
@@ -36,11 +36,11 @@ func GzipMiddleware(h http.Handler) http.Handler {
 
 		if supportsGzip {
 			w.Header().Set("Content-Encoding", "gzip")
-			
+
 			wr := gzip.NewWriter(w)
-			gz := GzipWriter {ResponseWriter: w, Writer: wr}
+			gz := GzipWriter{ResponseWriter: w, Writer: wr}
 			defer wr.Close()
-			
+
 			h.ServeHTTP(gz, r)
 			return
 		}

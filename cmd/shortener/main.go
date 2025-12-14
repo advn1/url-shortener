@@ -58,7 +58,7 @@ func main() {
 	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
 	mux.HandleFunc("/api/shorten/batch", h.HandlePostBatchRESTApi)
 	mux.HandleFunc("/ping", h.PingBD)
-	
+
 	// create a middlewared-handler
 	handler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
 
@@ -71,29 +71,29 @@ func main() {
 }
 
 func loadFromFile(filename string) (map[string]string, error) {
-	file, err := os.OpenFile(filename, os.O_RDONLY|os.O_CREATE, 0664)
+	file, err := os.Open(filename)
 	if err != nil {
 		return map[string]string{}, err
 	}
-	
+
 	defer file.Close()
-	
+
 	scanner := bufio.NewScanner(file)
 	urlsMap := make(map[string]string, 10)
-	
+
 	for scanner.Scan() {
 		line := scanner.Bytes()
-	    if len(line) == 0 {
-        	continue
-    	}	
-		var jsonLine handler.PostURLResponse 
-		
+		if len(line) == 0 {
+			continue
+		}
+		var jsonLine handler.ShortURL
+
 		err := json.Unmarshal(line, &jsonLine)
 		if err != nil {
 			return map[string]string{}, err
 		}
-		
-		urlsMap[jsonLine.ShortUrl] = jsonLine.OriginalUrl
+
+		urlsMap[jsonLine.ShortURL] = jsonLine.OriginalURL
 	}
 
 	return urlsMap, nil
@@ -103,7 +103,7 @@ func initUrlsMap(fileStoragePath string, sugar *zap.SugaredLogger) map[string]st
 	urlsMap, err := loadFromFile(fileStoragePath)
 	if err != nil {
 		sugar.Fatalw("Loading file error", "error", err)
-	}	
+	}
 	return urlsMap
 }
 
@@ -111,22 +111,23 @@ func initDB(dsn string, sugar *zap.SugaredLogger) *sql.DB {
 	// init db
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		sugar.Fatalw("cannot open db connection", "error", err)	
+		sugar.Fatalw("cannot open db connection", "error", err)
 	}
 
 	// check connection
 	if err = db.Ping(); err != nil {
-        sugar.Fatalw("cannot ping db", "error", err)
+		sugar.Fatalw("cannot ping db", "error", err)
 	}
 
 	// create table
 	_, err = db.ExecContext(context.Background(), `CREATE TABLE IF NOT EXISTS urls (
-	id CHAR(36) PRIMARY KEY,
-	original_url VARCHAR(100) NOT NULL,
+	id serial PRIMARY KEY,
+	uuid CHAR(36) UNIQUE,
+	original_url VARCHAR(100) NOT NULL UNIQUE,
 	short_url VARCHAR(100) NOT NULL UNIQUE
 	)`)
 	if err != nil {
 		sugar.Fatalw("cannot init db table", "error", err)
-	}	
+	}
 	return db
 }

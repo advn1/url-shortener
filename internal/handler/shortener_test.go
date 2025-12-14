@@ -240,15 +240,15 @@ func TestPostRESTApi_Success(t *testing.T) {
 		t.Errorf("error on reading res.Body: %v", err)
 	}
 
-	var responseBody PostURLResponse
+	var responseBody ShortURL
 
 	err = json.Unmarshal(body, &responseBody)
 	if err != nil {
 		t.Errorf("error on unmarshalling response body: %v", err)
 	}
 
-	if len(responseBody.ShortUrl) == 0 {
-		t.Errorf("incorrect response. Got %v, wanted http://localhost:8080/<something>", responseBody.ShortUrl)
+	if len(responseBody.ShortURL) == 0 {
+		t.Errorf("incorrect response. Got %v, wanted http://localhost:8080/<something>", responseBody.ShortURL)
 	}
 }
 
