@@ -11,6 +11,8 @@ import (
 	"github.com/advn1/url-shortener/internal/config"
 	"github.com/advn1/url-shortener/internal/handler"
 	"github.com/advn1/url-shortener/internal/middleware"
+	"github.com/advn1/url-shortener/internal/models"
+	"github.com/advn1/url-shortener/internal/repository"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
 )
@@ -40,24 +42,25 @@ func main() {
 		sugar.Infow("Storage mode: Database")
 		db = initDB(cfg.DatabaseDSN, sugar)
 		defer db.Close()
-	} else if cfg.FileStoragePath != "" {
-		sugar.Infow("Storage mode: File")
-		urlsMap = initUrlsMap(cfg.FileStoragePath, sugar)
-	} else {
-		sugar.Infow("Storage mode: In-memory")
-		// nothing happens. urlsMap is already initialized
 	}
+	// else if cfg.FileStoragePath != "" {
+	// 	sugar.Infow("Storage mode: File")
+	// 	urlsMap = initUrlsMap(cfg.FileStoragePath, sugar)
+	// } else {
+	// 	sugar.Infow("Storage mode: In-memory")
+	// 	// nothing happens. urlsMap is already initialized
+	// }
 
 	// init handler and mux
-	h := handler.New(cfg.BaseURL, urlsMap, cfg.FileStoragePath, db, sugar)
+	h := handler.New(cfg.BaseURL, urlsMap, repository.DatabaseStorage{DB: db}, sugar)
 	mux := http.NewServeMux()
 
 	// register endpoints
-	mux.HandleFunc("/", h.HandlePost)
+	// mux.HandleFunc("/", h.HandlePost)
 	mux.HandleFunc("/{id}", h.HandleGetById)
 	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
 	mux.HandleFunc("/api/shorten/batch", h.HandlePostBatchRESTApi)
-	mux.HandleFunc("/ping", h.PingBD)
+	mux.HandleFunc("/ping", h.PingDB)
 
 	// create a middlewared-handler
 	handler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
@@ -70,7 +73,7 @@ func main() {
 	}
 }
 
-func loadFromFile(filename string) (map[string]string, error) {
+func _loadFromFile(filename string) (map[string]string, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return map[string]string{}, err
@@ -86,7 +89,7 @@ func loadFromFile(filename string) (map[string]string, error) {
 		if len(line) == 0 {
 			continue
 		}
-		var jsonLine handler.ShortURL
+		var jsonLine models.ShortURL
 
 		err := json.Unmarshal(line, &jsonLine)
 		if err != nil {
@@ -100,7 +103,7 @@ func loadFromFile(filename string) (map[string]string, error) {
 }
 
 func initUrlsMap(fileStoragePath string, sugar *zap.SugaredLogger) map[string]string {
-	urlsMap, err := loadFromFile(fileStoragePath)
+	urlsMap, err := _loadFromFile(fileStoragePath)
 	if err != nil {
 		sugar.Fatalw("Loading file error", "error", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/advn1/url-shortener/internal/models"
 	"go.uber.org/zap"
 )
 
@@ -210,7 +211,7 @@ func TestPostRESTApi_Success(t *testing.T) {
 
 	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
-	postURLBody := PostURLBody{Url: "https://youtube.com"}
+	postURLBody := models.PostURLBody{Url: "https://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -240,7 +241,7 @@ func TestPostRESTApi_Success(t *testing.T) {
 		t.Errorf("error on reading res.Body: %v", err)
 	}
 
-	var responseBody ShortURL
+	var responseBody models.ShortURL
 
 	err = json.Unmarshal(body, &responseBody)
 	if err != nil {
@@ -263,7 +264,7 @@ func TestPostRESTApi_WrongContentType(t *testing.T) {
 
 	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
-	postURLBody := PostURLBody{Url: "https://youtube.com"}
+	postURLBody := models.PostURLBody{Url: "https://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -296,7 +297,7 @@ func TestPostRESTApi_WrongMethod(t *testing.T) {
 
 	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
-	postURLBody := PostURLBody{Url: "https://youtube.com"}
+	postURLBody := models.PostURLBody{Url: "https://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -329,7 +330,7 @@ func TestPostRESTApi_EmptyURL(t *testing.T) {
 
 	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
-	postURLBody := PostURLBody{Url: ""}
+	postURLBody := models.PostURLBody{Url: ""}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
@@ -362,7 +363,7 @@ func TestPostRESTApi_InvalidURL(t *testing.T) {
 
 	h := New("http://localhost:8080", make(map[string]string), "./test", nil, sugar)
 
-	postURLBody := PostURLBody{Url: "://youtube.com"}
+	postURLBody := models.PostURLBody{Url: "://youtube.com"}
 
 	bytesPostURLBody, err := json.Marshal(&postURLBody)
 	if err != nil {
