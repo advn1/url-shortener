@@ -1,17 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/advn1/url-shortener/internal/config"
 	"github.com/advn1/url-shortener/internal/handler"
 	"github.com/advn1/url-shortener/internal/middleware"
-	"github.com/advn1/url-shortener/internal/models"
 	"github.com/advn1/url-shortener/internal/repository"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"go.uber.org/zap"
@@ -30,87 +27,68 @@ func main() {
 
 	// parse application config and validate it
 	cfg := config.Parse()
-	if err := cfg.Validate(); err != nil {
+	if err = cfg.Validate(); err != nil {
 		sugar.Fatalw("Config validation error", "error", err)
 	}
 
 	// choose where to store data
-	var urlsMap map[string]string = map[string]string{}
-	var db *sql.DB
+	var repo repository.Storage
 
 	if cfg.DatabaseDSN != "" {
 		sugar.Infow("Storage mode: Database")
-		db = initDB(cfg.DatabaseDSN, sugar)
-		defer db.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		db := initDB(ctx, cfg.DatabaseDSN, sugar)
+		defer cancel()
+
+		repo = repository.DatabaseStorage{DB: db}
+	} else if cfg.FileStoragePath != "" {
+		sugar.Infow("Storage mode: File")
+
+		fileStorage, err := repository.InitFileStorage(cfg.FileStoragePath)
+		if err != nil {
+			sugar.Fatalw("Failed initializing file storage", "error", err)
+		}
+
+		defer fileStorage.Close()
+
+		repo = fileStorage
+	} else {
+		sugar.Infow("Storage mode: In-memory")
+		repo = repository.InitInMemoryStorage()
 	}
-	// else if cfg.FileStoragePath != "" {
-	// 	sugar.Infow("Storage mode: File")
-	// 	urlsMap = initUrlsMap(cfg.FileStoragePath, sugar)
-	// } else {
-	// 	sugar.Infow("Storage mode: In-memory")
-	// 	// nothing happens. urlsMap is already initialized
-	// }
 
 	// init handler and mux
-	h := handler.New(cfg.BaseURL, urlsMap, repository.DatabaseStorage{DB: db}, sugar)
+	h := handler.New(cfg.BaseURL, repo, sugar)
 	mux := http.NewServeMux()
 
 	// register endpoints
-	// mux.HandleFunc("/", h.HandlePost)
 	mux.HandleFunc("/{id}", h.HandleGetById)
 	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
 	mux.HandleFunc("/api/shorten/batch", h.HandlePostBatchRESTApi)
 	mux.HandleFunc("/ping", h.PingDB)
 
 	// create a middlewared-handler
-	handler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
+	middlewaredHandler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
+
+	// create http.Server
+	server := &http.Server{
+		Handler:           middlewaredHandler,
+		Addr:              cfg.ServerAddr,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       15 * time.Second,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
 
 	// start listening
 	sugar.Infow("Starting server", "address", cfg.ServerAddr, "base URL", cfg.BaseURL)
-	err = http.ListenAndServe(cfg.ServerAddr, handler)
+	err = server.ListenAndServe()
 	if err != nil {
 		sugar.Fatalw("Starting server", "error", err)
 	}
 }
 
-func _loadFromFile(filename string) (map[string]string, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return map[string]string{}, err
-	}
-
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	urlsMap := make(map[string]string, 10)
-
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var jsonLine models.ShortURL
-
-		err := json.Unmarshal(line, &jsonLine)
-		if err != nil {
-			return map[string]string{}, err
-		}
-
-		urlsMap[jsonLine.ShortURL] = jsonLine.OriginalURL
-	}
-
-	return urlsMap, nil
-}
-
-func initUrlsMap(fileStoragePath string, sugar *zap.SugaredLogger) map[string]string {
-	urlsMap, err := _loadFromFile(fileStoragePath)
-	if err != nil {
-		sugar.Fatalw("Loading file error", "error", err)
-	}
-	return urlsMap
-}
-
-func initDB(dsn string, sugar *zap.SugaredLogger) *sql.DB {
+func initDB(ctx context.Context, dsn string, sugar *zap.SugaredLogger) *sql.DB {
 	// init db
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -118,7 +96,7 @@ func initDB(dsn string, sugar *zap.SugaredLogger) *sql.DB {
 	}
 
 	// check connection
-	if err = db.Ping(); err != nil {
+	if err = db.PingContext(ctx); err != nil {
 		sugar.Fatalw("cannot ping db", "error", err)
 	}
 

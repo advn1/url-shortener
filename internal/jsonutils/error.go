@@ -15,7 +15,7 @@ type JSONError struct {
 func (j JSONError) Error() string {
 	return fmt.Sprintf("%d: %s - %s", j.StatusCode, j.Err, j.Msg)
 }
-func NewJSONError(statusCode int, err string, msg string) JSONError {
+func NewJSONError(statusCode int, err, msg string) JSONError {
 	return JSONError{StatusCode: statusCode, Err: err, Msg: msg}
 }
 

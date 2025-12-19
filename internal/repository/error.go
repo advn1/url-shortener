@@ -1,7 +1,12 @@
 package repository
 
-import "errors"
+import (
+	"errors"
+)
 
-var ConflictErr = errors.New("conflict")
-var InternalErr = errors.New("internal")
-var NotExistsErr = errors.New("not exists")
+// DB errors
+var ErrConflict = errors.New("conflict")
+var ErrInternal = errors.New("internal")
+var ErrNotExists = errors.New("not exists")
+
+// File errors
