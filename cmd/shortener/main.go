@@ -41,21 +41,21 @@ func main() {
 		defer cancel()
 
 		repo = repository.DatabaseStorage{DB: db}
-	} else if cfg.FileStoragePath != "" {
-		sugar.Infow("Storage mode: File")
+	} // else if cfg.FileStoragePath != "" {
+	// 	sugar.Infow("Storage mode: File")
 
-		fileStorage, err := repository.InitFileStorage(cfg.FileStoragePath)
-		if err != nil {
-			sugar.Fatalw("Failed initializing file storage", "error", err)
-		}
+	// 	fileStorage, err := repository.InitFileStorage(cfg.FileStoragePath)
+	// 	if err != nil {
+	// 		sugar.Fatalw("Failed initializing file storage", "error", err)
+	// 	}
 
-		defer fileStorage.Close()
+	// 	defer fileStorage.Close()
 
-		repo = fileStorage
-	} else {
-		sugar.Infow("Storage mode: In-memory")
-		repo = repository.InitInMemoryStorage()
-	}
+	// 	repo = fileStorage
+	// } else {
+	// 	sugar.Infow("Storage mode: In-memory")
+	// 	repo = repository.InitInMemoryStorage()
+	// }
 
 	// init handler and mux
 	h := handler.New(cfg.BaseURL, repo, sugar)
@@ -68,7 +68,9 @@ func main() {
 	mux.HandleFunc("/ping", h.PingDB)
 
 	// create a middlewared-handler
-	middlewaredHandler := middleware.GzipMiddleware(middleware.LoggingMiddleware(mux, sugar))
+	middlewaredHandler := middleware.GzipMiddleware(mux)
+	middlewaredHandler = middleware.AuthMiddleware("secretkey")(middlewaredHandler)
+	middlewaredHandler = middleware.LoggingMiddleware(middlewaredHandler, sugar)
 
 	// create http.Server
 	server := &http.Server{
@@ -105,7 +107,8 @@ func initDB(ctx context.Context, dsn string, sugar *zap.SugaredLogger) *sql.DB {
 	id serial PRIMARY KEY,
 	uuid CHAR(36) UNIQUE,
 	original_url VARCHAR(100) NOT NULL UNIQUE,
-	short_url VARCHAR(100) NOT NULL UNIQUE
+	short_url VARCHAR(100) NOT NULL UNIQUE,
+	user_id CHAR(36)
 	)`)
 	if err != nil {
 		sugar.Fatalw("cannot init db table", "error", err)

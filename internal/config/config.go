@@ -13,6 +13,7 @@ type Config struct {
 	BaseURL         string
 	FileStoragePath string
 	DatabaseDSN     string
+	JWTkey          string
 }
 
 func setValue(envValue, flagValue, defaultValue string) string {
@@ -31,12 +32,14 @@ func Parse() *Config {
 		BaseURL:         "http://localhost:8080",
 		FileStoragePath: "",
 		DatabaseDSN:     "", // host=localhost user=postgres password=1234 dbname=postgres sslmode=disable
+		JWTkey:          "secretkey",
 	}
 
 	envServerAddr := strings.TrimSpace(os.Getenv("SERVER_ADDRESS"))
 	envBaseURL := strings.TrimSpace(os.Getenv("BASE_URL"))
 	envFileStoragePath := strings.TrimSpace(os.Getenv("FILE_STORAGE_PATH"))
 	envDatabaseDSN := strings.TrimSpace(os.Getenv("DATABASE_DSN"))
+	envJWTkey := strings.TrimSpace(os.Getenv("JWT_APP_KEY"))
 
 	flagServerAddr := flag.String("a", "", "HTTP server address (overridden by SERVER_ADDRESS env)")
 	flag.StringVar(flagServerAddr, "address", "", "HTTP server address (overridden by SERVER_ADDRESS env)")
@@ -46,6 +49,8 @@ func Parse() *Config {
 	flag.StringVar(flagFileStoragePath, "file", "", "path of storage file of shortened URLs (overridden by FILE_STORAGE_PATH env)")
 	flagDatabaseDSN := flag.String("d", "", "database dsn (data source name). stores all connection details (overridden by DATABASE_DSN env)")
 	flag.StringVar(flagDatabaseDSN, "database", "", "database dsn (data source name). stores all connection details (overridden by DATABASE_DSN env)")
+	flagJWTkey := flag.String("k", "", "key for jwt (overridden by JWT_APP_KEY env)")
+	flag.StringVar(flagJWTkey, "key", "", "key for jwt (overridden by JWT_APP_KEY env)")
 
 	flag.Parse()
 
@@ -53,6 +58,7 @@ func Parse() *Config {
 	cfg.BaseURL = setValue(envBaseURL, *flagBaseURL, cfg.BaseURL)
 	cfg.FileStoragePath = setValue(envFileStoragePath, *flagFileStoragePath, cfg.FileStoragePath)
 	cfg.DatabaseDSN = setValue(envDatabaseDSN, *flagDatabaseDSN, cfg.DatabaseDSN)
+	cfg.JWTkey = setValue(envJWTkey, *flagJWTkey, cfg.JWTkey)
 
 	return cfg
 }

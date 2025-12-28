@@ -15,7 +15,7 @@ type DatabaseStorage struct {
 	DB *sql.DB
 }
 
-func (d DatabaseStorage) SaveURL(ctx context.Context, original, short string) (models.ShortURL, error) {
+func (d DatabaseStorage) SaveURL(ctx context.Context, original, short, userId string) (models.ShortURL, error) {
 	var result models.ShortURL
 	// --- check if short URL already exists
 	foundUUID, foundURL, exists, err := findExistingURL(ctx, d.DB, original)
@@ -28,12 +28,12 @@ func (d DatabaseStorage) SaveURL(ctx context.Context, original, short string) (m
 		if err != nil {
 			return result, ErrInternal
 		}
-		result = models.ShortURL{ID: parsedUUID, ShortURL: foundURL, OriginalURL: original}
+		result = models.ShortURL{ID: parsedUUID, ShortURL: foundURL, OriginalURL: original, UserID: userId}
 
 		return result, ErrConflict
 	}
 
-	result = models.ShortURL{ID: uuid.New(), ShortURL: short, OriginalURL: original}
+	result = models.ShortURL{ID: uuid.New(), ShortURL: short, OriginalURL: original, UserID: userId}
 
 	// --- save to database ---
 	res, err := saveToDatabase(ctx, d.DB, []models.ShortURL{result})
@@ -48,7 +48,7 @@ func (d DatabaseStorage) SaveURL(ctx context.Context, original, short string) (m
 		if err != nil {
 			return result, fmt.Errorf("failed to parse UUID from DB: %w", err)
 		}
-		result := models.ShortURL{ID: parsedUUID, ShortURL: foundURL, OriginalURL: original}
+		result := models.ShortURL{ID: parsedUUID, ShortURL: foundURL, OriginalURL: original, UserID: userId}
 
 		return result, ErrConflict
 	}
@@ -172,7 +172,7 @@ func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []stri
 }
 
 func saveToDatabase(ctx context.Context, db *sql.DB, itemsToSave []models.ShortURL) (sql.Result, error) {
-	stmt, err := db.PrepareContext(ctx, "INSERT INTO urls (uuid, original_url, short_url) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING")
+	stmt, err := db.PrepareContext(ctx, "INSERT INTO urls (uuid, original_url, short_url, user_id) VALUES ($1, $2, $3, $4) ON CONFLICT (original_url) DO NOTHING")
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -181,7 +181,7 @@ func saveToDatabase(ctx context.Context, db *sql.DB, itemsToSave []models.ShortU
 
 	var latestRes sql.Result
 	for _, item := range itemsToSave {
-		res, err := stmt.ExecContext(ctx, item.ID, item.OriginalURL, item.ShortURL)
+		res, err := stmt.ExecContext(ctx, item.ID, item.OriginalURL, item.ShortURL, item.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to insert to db: %w", err)
 		}

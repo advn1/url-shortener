@@ -91,7 +91,15 @@ func (h *Handler) HandlePostRESTApi(w http.ResponseWriter, r *http.Request) {
 	shortId := random.GenerateRandomUrl()
 
 	ctx := r.Context()
-	res, err := h.Storage.SaveURL(ctx, postURLBody.Url, shortId)
+
+	userID, ok := r.Context().Value(models.UserIDKey).(string)
+	if !ok {
+		h.Logger.Errorw("error", "details", "failed to parse id to string")
+		jsonutils.WriteInternalError(w)
+		return
+	}
+
+	res, err := h.Storage.SaveURL(ctx, postURLBody.Url, shortId, userID)
 	if errors.Is(err, repository.ErrConflict) {
 		res = res.ToFullURL(h.BaseURL)
 		jsonutils.WriteJSON(w, http.StatusConflict, res)

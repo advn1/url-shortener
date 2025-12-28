@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/advn1/url-shortener/internal/jsonutils"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -31,6 +32,7 @@ type ShortURL struct {
 	ID          uuid.UUID `json:"uuid"`
 	ShortURL    string    `json:"short_url"`
 	OriginalURL string    `json:"original_url"`
+	UserID      string    `json:"user_id"`
 }
 
 func (s ShortURL) ToFullURL(baseURL string) ShortURL {
@@ -38,6 +40,7 @@ func (s ShortURL) ToFullURL(baseURL string) ShortURL {
 		ID:          s.ID,
 		ShortURL:    baseURL + "/" + s.ShortURL,
 		OriginalURL: s.OriginalURL,
+		UserID:      s.UserID,
 	}
 }
 
@@ -71,4 +74,13 @@ func (b BatchBody) Validate() error {
 type BatchResponse struct {
 	CorrelationID string `json:"correlation_id"`
 	ShortURL      string `json:"short_url"`
+}
+
+type ContextKey string
+
+const UserIDKey ContextKey = "userID"
+
+type UserClaims struct {
+	UserID string `json:"user_id"`
+	jwt.RegisteredClaims
 }
