@@ -41,17 +41,18 @@ func main() {
 		defer cancel()
 
 		repo = repository.DatabaseStorage{DB: db}
-	} // else if cfg.FileStoragePath != "" {
-	// 	sugar.Infow("Storage mode: File")
+	} else if cfg.FileStoragePath != "" {
+		sugar.Infow("Storage mode: File")
 
-	// 	fileStorage, err := repository.InitFileStorage(cfg.FileStoragePath)
-	// 	if err != nil {
-	// 		sugar.Fatalw("Failed initializing file storage", "error", err)
-	// 	}
+		fileStorage, err := repository.InitFileStorage(cfg.FileStoragePath)
+		if err != nil {
+			sugar.Fatalw("Failed initializing file storage", "error", err)
+		}
 
-	// 	defer fileStorage.Close()
+		defer fileStorage.Close()
 
-	// 	repo = fileStorage
+		repo = fileStorage
+	}
 	// } else {
 	// 	sugar.Infow("Storage mode: In-memory")
 	// 	repo = repository.InitInMemoryStorage()

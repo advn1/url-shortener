@@ -47,14 +47,14 @@ func InitFileStorage(path string) (*FileStorage, error) {
 	return &FileStorage{File: file, URLs: shortURLMap, ReverseURLs: reverseURLMap}, nil
 }
 
-func (f *FileStorage) SaveURL(ctx context.Context, original, short string) (models.ShortURL, error) {
+func (f *FileStorage) SaveURL(ctx context.Context, original, short, userId string) (models.ShortURL, error) {
 	shortID, ok := f.ReverseURLs[original]
 
 	if ok {
 		return f.URLs[shortID], ErrConflict
 	}
 
-	res := models.ShortURL{ID: uuid.New(), OriginalURL: original, ShortURL: short}
+	res := models.ShortURL{ID: uuid.New(), OriginalURL: original, ShortURL: short, UserID: userId}
 	err := f.writeToFile(res)
 	if err != nil {
 		return models.ShortURL{}, err
@@ -75,13 +75,13 @@ func (f *FileStorage) GetOriginalURL(ctx context.Context, short string) (string,
 	return shortURL.OriginalURL, nil
 }
 
-func (f *FileStorage) SaveBatch(ctx context.Context, batchRequest []models.BatchRequest) ([]models.BatchResponse, error) {
+func (f *FileStorage) SaveBatch(ctx context.Context, batchRequest []models.BatchRequest, userId string) ([]models.BatchResponse, error) {
 	var batchResponse []models.BatchResponse
 	for _, batch := range batchRequest {
 		if _, ok := f.ReverseURLs[batch.OriginalURL]; !ok {
 			short := random.GenerateRandomUrl()
 			UUID := uuid.New()
-			err := f.writeToFile(models.ShortURL{ID: UUID, ShortURL: short, OriginalURL: batch.OriginalURL})
+			err := f.writeToFile(models.ShortURL{ID: UUID, ShortURL: short, OriginalURL: batch.OriginalURL, UserID: userId})
 			if err != nil {
 				return batchResponse, err
 			}
