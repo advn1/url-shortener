@@ -52,11 +52,10 @@ func main() {
 		defer fileStorage.Close()
 
 		repo = fileStorage
+	} else {
+		sugar.Infow("Storage mode: In-memory")
+		repo = repository.InitInMemoryStorage()
 	}
-	// } else {
-	// 	sugar.Infow("Storage mode: In-memory")
-	// 	repo = repository.InitInMemoryStorage()
-	// }
 
 	// init handler and mux
 	h := handler.New(cfg.BaseURL, repo, sugar)

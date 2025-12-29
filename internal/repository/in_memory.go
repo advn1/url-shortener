@@ -19,14 +19,14 @@ func InitInMemoryStorage() *InMemory {
 	return &InMemory{URLs: URLs, ReverseURLs: reverseURLs}
 }
 
-func (m *InMemory) SaveURL(ctx context.Context, original, short string) (models.ShortURL, error) {
+func (m *InMemory) SaveURL(ctx context.Context, original, short, userId string) (models.ShortURL, error) {
 	shortID, ok := m.ReverseURLs[original]
 
 	if ok {
 		return m.URLs[shortID], ErrConflict
 	}
 
-	res := models.ShortURL{ID: uuid.New(), OriginalURL: original, ShortURL: short}
+	res := models.ShortURL{ID: uuid.New(), OriginalURL: original, ShortURL: short, UserID: userId}
 
 	m.URLs[short] = res
 	m.ReverseURLs[original] = short
@@ -42,14 +42,14 @@ func (m *InMemory) GetOriginalURL(ctx context.Context, short string) (string, er
 	return shortURL.OriginalURL, nil
 }
 
-func (m *InMemory) SaveBatch(ctx context.Context, batchRequest []models.BatchRequest) ([]models.BatchResponse, error) {
+func (m *InMemory) SaveBatch(ctx context.Context, batchRequest []models.BatchRequest, userId string) ([]models.BatchResponse, error) {
 	var batchResponse []models.BatchResponse
 	for _, batch := range batchRequest {
 		if _, ok := m.ReverseURLs[batch.OriginalURL]; !ok {
 			short := random.GenerateRandomUrl()
 			UUID := uuid.New()
 
-			m.URLs[short] = models.ShortURL{ID: UUID, OriginalURL: batch.OriginalURL, ShortURL: short}
+			m.URLs[short] = models.ShortURL{ID: UUID, OriginalURL: batch.OriginalURL, ShortURL: short, UserID: userId}
 			m.ReverseURLs[batch.OriginalURL] = short
 			batchResponse = append(batchResponse, models.BatchResponse{CorrelationID: batch.CorrelationID, ShortURL: short})
 		} else {
