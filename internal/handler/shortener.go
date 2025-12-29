@@ -140,7 +140,14 @@ func (h *Handler) HandlePostBatchRESTApi(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	batchResponse, err := h.Storage.SaveBatch(ctx, batchBody)
+	userID, ok := r.Context().Value(models.UserIDKey).(string)
+	if !ok {
+		h.Logger.Errorw("error", "details", "failed to parse id to string")
+		jsonutils.WriteInternalError(w)
+		return
+	}
+
+	batchResponse, err := h.Storage.SaveBatch(ctx, batchBody, userID)
 
 	if err != nil {
 		h.Logger.Errorw("SaveBatch error", "error", err)

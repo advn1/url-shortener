@@ -69,7 +69,7 @@ func (d DatabaseStorage) GetOriginalURL(ctx context.Context, short string) (stri
 	return originalURL, nil
 }
 
-func (d DatabaseStorage) SaveBatch(ctx context.Context, batchRequest []models.BatchRequest) ([]models.BatchResponse, error) {
+func (d DatabaseStorage) SaveBatch(ctx context.Context, batchRequest []models.BatchRequest, userId string) ([]models.BatchResponse, error) {
 
 	var batchResponse []models.BatchResponse
 	var itemsToSave []models.ShortURL
@@ -78,7 +78,7 @@ func (d DatabaseStorage) SaveBatch(ctx context.Context, batchRequest []models.Ba
 	for _, batchBody := range batchRequest {
 		shortUrl := random.GenerateRandomUrl()
 		batchResponse = append(batchResponse, models.BatchResponse{CorrelationID: batchBody.CorrelationID, ShortURL: shortUrl})
-		itemsToSave = append(itemsToSave, models.ShortURL{ID: uuid.New(), OriginalURL: batchBody.OriginalURL, ShortURL: shortUrl})
+		itemsToSave = append(itemsToSave, models.ShortURL{ID: uuid.New(), OriginalURL: batchBody.OriginalURL, ShortURL: shortUrl, UserID: userId})
 		allOriginalURLs = append(allOriginalURLs, batchBody.OriginalURL)
 	}
 
@@ -126,7 +126,7 @@ func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []stri
 
 	defer tx.Rollback()
 
-	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (uuid, original_url, short_url) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO NOTHING")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO urls (uuid, original_url, short_url, user_id) VALUES ($1, $2, $3, $4) ON CONFLICT (original_url) DO NOTHING")
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -135,7 +135,7 @@ func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []stri
 
 	// insert to database
 	for _, item := range itemsToSave {
-		_, err := stmt.ExecContext(ctx, item.ID, item.OriginalURL, item.ShortURL)
+		_, err := stmt.ExecContext(ctx, item.ID, item.OriginalURL, item.ShortURL, item.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute insert statement: %w", err)
 		}
