@@ -84,3 +84,15 @@ type UserClaims struct {
 	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
+
+type UserURLs struct {
+	ShortURL string `json:"short_url"`
+	OriginalURL string `json:"original_url"`
+}
+
+func (s UserURLs) ToFullURL(baseURL string) UserURLs {
+	return UserURLs{
+		ShortURL:    baseURL + "/" + s.ShortURL,
+		OriginalURL: s.OriginalURL,
+	}
+}

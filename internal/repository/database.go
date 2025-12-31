@@ -89,7 +89,7 @@ func (d DatabaseStorage) SaveBatch(ctx context.Context, batchRequest []models.Ba
 
 	dbMap := make(map[string]string, len(shortAndOriginal))
 	for _, el := range shortAndOriginal {
-		dbMap[el.originalURL] = el.shortURL
+		dbMap[el.OriginalURL] = el.ShortURL
 	}
 
 	for i := range len(batchRequest) {
@@ -102,16 +102,36 @@ func (d DatabaseStorage) SaveBatch(ctx context.Context, batchRequest []models.Ba
 	return batchResponse, nil
 }
 
+func (d DatabaseStorage) GetUserURLs(ctx context.Context, userId string) ([]models.UserURLs, error) {
+	rows, err := d.DB.QueryContext(ctx, "SELECT original_url, short_url FROM urls WHERE user_id = $1", userId)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to select user urls: %v", err)
+	}
+
+	defer rows.Close()
+
+	urls := make([]models.UserURLs, 0, 10)
+	for rows.Next() {
+		row := models.UserURLs{}
+		if err := rows.Scan(&row.OriginalURL, &row.ShortURL); err != nil {
+			return nil, fmt.Errorf("scan error: %w", err)
+		}
+
+		urls = append(urls, row)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return urls, nil
+}
+
 func (d DatabaseStorage) Ping(ctx context.Context) error {
 	return d.DB.PingContext(ctx)
 }
 
-type ShortAndOriginal struct {
-	shortURL    string
-	originalURL string
-}
-
-func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []string, itemsToSave []models.ShortURL) ([]ShortAndOriginal, error) {
+func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []string, itemsToSave []models.ShortURL) ([]models.UserURLs, error) {
 	// begin transaction
 	// insert new urls in db, ignore already existing
 	// after inserting
@@ -141,7 +161,7 @@ func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []stri
 		}
 	}
 
-	var shortAndOriginal []ShortAndOriginal
+	var shortAndOriginal []models.UserURLs
 	rows, err := tx.QueryContext(ctx, "SELECT short_url, original_url FROM urls WHERE original_url = ANY($1)", allOriginalURLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query select statement: %w", err)
@@ -155,7 +175,7 @@ func saveToDatabaseBatch(ctx context.Context, db *sql.DB, allOriginalURLS []stri
 		var shortURL, originalURL string
 
 		rows.Scan(&shortURL, &originalURL)
-		shortAndOriginal = append(shortAndOriginal, ShortAndOriginal{shortURL: shortURL, originalURL: originalURL})
+		shortAndOriginal = append(shortAndOriginal, models.UserURLs{ShortURL: shortURL, OriginalURL: originalURL})
 		i++
 	}
 

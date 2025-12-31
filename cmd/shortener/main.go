@@ -65,11 +65,12 @@ func main() {
 	mux.HandleFunc("/{id}", h.HandleGetById)
 	mux.HandleFunc("/api/shorten", h.HandlePostRESTApi)
 	mux.HandleFunc("/api/shorten/batch", h.HandlePostBatchRESTApi)
+	mux.HandleFunc("/api/user/urls", h.HandleGetUserURLs)
 	mux.HandleFunc("/ping", h.PingDB)
 
 	// create a middlewared-handler
 	middlewaredHandler := middleware.GzipMiddleware(mux)
-	middlewaredHandler = middleware.AuthMiddleware("secretkey")(middlewaredHandler)
+	middlewaredHandler = middleware.AuthMiddleware(cfg.JWTkey)(middlewaredHandler)
 	middlewaredHandler = middleware.LoggingMiddleware(middlewaredHandler, sugar)
 
 	// create http.Server

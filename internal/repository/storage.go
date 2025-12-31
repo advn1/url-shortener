@@ -10,5 +10,6 @@ type Storage interface {
 	SaveURL(ctx context.Context, original, short, userId string) (models.ShortURL, error)
 	GetOriginalURL(ctx context.Context, short string) (string, error)
 	SaveBatch(ctx context.Context, batchRequest []models.BatchRequest, userId string) ([]models.BatchResponse, error)
+	GetUserURLs(ctx context.Context, userId string) ([]models.UserURLs, error)
 	Ping(ctx context.Context) error
 }

@@ -57,6 +57,7 @@ func AuthMiddleware(key string) func(http.Handler) http.Handler {
 				return
 			}
 
+
 			ctx := context.WithValue(r.Context(), models.UserIDKey, claims.UserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

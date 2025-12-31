@@ -97,6 +97,17 @@ func (f *FileStorage) SaveBatch(ctx context.Context, batchRequest []models.Batch
 	return batchResponse, nil
 }
 
+func (f *FileStorage) GetUserURLs(ctx context.Context, userId string) ([]models.UserURLs, error) {
+	urls := make([]models.UserURLs, 0, 10)
+	for _, v := range f.URLs {
+		if v.UserID == userId {
+			urls = append(urls, models.UserURLs{ShortURL: v.ShortURL, OriginalURL: v.OriginalURL})
+		}
+	}
+
+	return urls, nil
+}
+
 func (f *FileStorage) Ping(ctx context.Context) error {
 	if f.File == nil {
 		return fmt.Errorf("file not open")
